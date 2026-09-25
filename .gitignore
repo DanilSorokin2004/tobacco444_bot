@@ -18,3 +18,5 @@ venv/
 
 # Логи
 *.log
+
+git add .gitignore
