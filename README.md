@@ -144,6 +144,10 @@ curl -X POST http://127.0.0.1:8000/notify \
 
 MIT License — см. файл [LICENSE](LICENSE)
 
+## 🤖 Бот в Telegram
+
+[@Tabak_444_bot](https://t.me/Tabak_444_bot)
+
 ## 👤 Автор
 
 **Данил Сорокин**
