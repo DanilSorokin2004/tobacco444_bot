@@ -15,3 +15,116 @@ Telegram-бот для автоматизации уведомлений кли�
 - 🆔 **Дедупликация** — одно уведомление на одно сканирование
 
 ## 🏗 Архитектура
+
+```
+[USB-сканер] → [test_evdev.py] → POST /notify → [FastAPI] → [aiogram] → [Telegram]
+                                                                    ↓
+                                                              [SQLite]
+```
+
+**Три компонента:**
+1. **`app.py`** — FastAPI + Telegram-бот (aiogram) в одном процессе.
+2. **`test_evdev.py`** — скрипт сканера (evdev), отправляет POST-запросы в API.
+3. **`database.py` + `models.py`** — SQLAlchemy + SQLite.
+
+## 🛠 Стек технологий
+
+- **Python 3.14**
+- **FastAPI** — REST API для приёма сигналов от сканера
+- **aiogram 3.x** — асинхронный Telegram-бот
+- **SQLAlchemy** — ORM для работы с базой
+- **SQLite** — база данных
+- **httpx** — HTTP-клиент для сканера
+- **evdev** — чтение событий сканера напрямую из `/dev/input/`
+- **uvicorn** — ASGI-сервер
+
+## 🚀 Установка и запуск
+
+### 1. Клонировать репозиторий
+
+```bash
+git clone https://github.com/DanilSorokin2004/tobacco444_bot.git
+cd tobacco444_bot
+```
+
+### 2. Создать виртуальное окружение
+
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Linux
+# .venv\Scripts\activate   # Windows
+```
+
+### 3. Установить зависимости
+
+```bash
+pip install fastapi uvicorn httpx aiogram python-dotenv sqlalchemy aiohttp-socks evdev
+```
+
+### 4. Создать `.env`
+
+```
+BOT_TOKEN=ваш_токен_от_BotFather
+```
+
+### 5. Инициализировать базу данных
+
+```bash
+python init_db.py
+```
+
+### 6. Запустить API + бота
+
+```bash
+python app.py
+```
+
+### 7. Запустить сканер (в отдельном терминале)
+
+```bash
+sudo .venv/bin/python test_evdev.py
+```
+
+## 📖 Использование
+
+### Команды бота
+
+| Команда | Описание |
+|---|---|
+| `/start` | Приветствие и список команд |
+| `/help` | Подробная справка |
+| `/find <штрихкод или название>` | Найти товар |
+| `/all` | Все товары с кнопками подписки |
+| `/categories` | Список категорий |
+| `/category <название>` | Товары в категории |
+| `/subscribe <штрихкод>` | Подписаться на товар |
+| `/my_subs` | Мои подписки |
+| `/unsubscribe <штрихкод>` | Отписаться |
+
+### API
+
+| Метод | Endpoint | Описание |
+|---|---|---|
+| `GET` | `/health` | Проверка работоспособности |
+| `POST` | `/notify` | Отправить уведомление подписчикам |
+
+**Пример:**
+
+```bash
+curl -X POST http://127.0.0.1:8000/notify \
+  -H "Content-Type: application/json" \
+  -d '{"barcode":"4006396099433"}'
+```
+
+## 📸 Скриншоты
+
+*(добавь сюда скриншоты из Telegram — карточку товара с фото, подписку, уведомление)*
+
+## 📄 Лицензия
+
+MIT License — см. файл [LICENSE](LICENSE)
+
+## 👤 Автор
+
+**Данил Сорокин**
+- GitHub: [@DanilSorokin2004](https://github.com/DanilSorokin2004)
