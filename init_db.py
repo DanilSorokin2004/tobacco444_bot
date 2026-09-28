@@ -3,7 +3,7 @@ from models import Product
 
 INITIAL_PRODUCTS = [
     {'barcode': '4605648038536', 'name': 'Corsar coffee', 'category': 'Сигариллы'},
-    {'barcode': '4006396099617', 'name': 'Chapman superslim vanilla', 'category': 'Сигареты'},
+    {'barcode': '4006396099433', 'name': 'Chapman vanilla', 'category': 'Сигареты', 'photo': 'img/Chapman Vanilla.jpg'},
     {'barcode': '4687202523344', 'name': 'THE SCANDALIST', 'category': 'Жидкость для электронных сигарет'},
 ]
 

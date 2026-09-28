@@ -5,6 +5,6 @@ session = get_session()
 products = session.query(Product).all()
 
 for p in products:
-    print(f'{p.barcode} - {p.name} ({p.category})')
+    print(f'{p.barcode} - {p.name} ({p.category}) → photo={p.photo}')
 
 session.close()

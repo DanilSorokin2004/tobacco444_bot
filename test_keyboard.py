@@ -13,6 +13,11 @@ last_key_time = time.time()
 lock = threading.Lock()
 TIMEOUT = 0.3
 
+# Дедупликация
+last_processed_barcode = ""
+last_processed_time = 0
+DEDUP_TIMEOUT = 1.0  # секунды
+
 API_URL = "http://127.0.0.1:8000/notify" 
 
 def find_product(code: str):
@@ -23,6 +28,15 @@ def find_product(code: str):
 
 
 def process_barcode(code: str):
+    global last_processed_barcode, last_processed_time
+    
+    # Дедупликация: игнорируем повторный код в течение DEDUP_TIMEOUT
+    now = time.time()
+    if code == last_processed_barcode and (now - last_processed_time) < DEDUP_TIMEOUT:
+        print(f"[DEDUP] Игнорирую повтор: {code}")
+        return
+    last_processed_barcode = code
+    last_processed_time = now
     if not code.isdigit() or len(code) not in (8, 12, 13):
         return
     product = find_product(code)

@@ -12,6 +12,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    FSInputFile,
 )
 from aiogram.client.session.aiohttp import AiohttpSession
 
@@ -33,17 +34,38 @@ dp = Dispatcher()
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
-        f"Привет, {message.from_user.full_name}!\n\n"
+                f"Привет, {message.from_user.full_name}! 👋\n\n"
         "Я бот табачного магазина «Табак 444».\n"
-        "Сообщаю, когда нужный товар снова появился в наличии.\n\n"
-        "Команды:\n"
-        "/find <штрихкод или название> — найти товар\n"
-        '/all — все товары\n'
-        '/categories — список категорий\n'
-        '/category <название> — товары в категории\n'
+        "Помогу узнать, когда нужный товар снова появится в наличии.\n\n"
+        "🔍 Как найти товар:\n"
+        "Напиши /find <название или штрихкод>\n"
+        "Например: /find chapman\n\n"
+        "🔔 Как подписаться:\n"
+        "Найди товар и нажми кнопку «Подписаться». "
+        "Я сообщу, когда он появится.\n\n"
+        "📋 Мои подписки: /my_subs\n"
+        "❓ Все команды: /help\n\n"
+        "Если что-то непонятно — нажми /help 😊"
+    )
+
+@dp.message(Command("help"))
+async def cmd_help(message: Message):
+    await message.answer(
+        "📖 Справка по боту «Табак 444»\n\n"
+        "🔍 Поиск товара:\n"
+        "/find <название> — найти по названию\n"
+        "/find <штрихкод> — найти по штрихкоду\n\n"
+        "🔔 Подписки:\n"
         "/subscribe <штрихкод> — подписаться\n"
-        "/my_subs — мои подписки\n"
-        "/unsubscribe <штрихкод> — отписаться"
+        "/unsubscribe <штрихкод> — отписаться\n"
+        "/my_subs — мои подписки\n\n"
+        "📦 Просмотр товаров:\n"
+        "/all — все товары\n"
+        "/categories — список категорий\n"
+        "/category <название> — товары в категории\n\n"
+        "💡 Как это работает:\n"
+        "Когда товар появляется в магазине, "
+        "я присылаю уведомление всем, кто на него подписан.",
     )
 
 @dp.message(Command("find"))
@@ -68,6 +90,7 @@ async def cmd_find(message: Message):
             "name": product.name,
             "category": product.category,
             "barcode": product.barcode,
+            "photo": product.photo,
         }
         session_db.close()
         await send_product_card(message, p_data)
@@ -87,7 +110,11 @@ async def cmd_find(message: Message):
 
     # Собираем данные до закрытия сессии
     products_data = [
-        {"name": p.name, "category": p.category, "barcode": p.barcode}
+        {"name": p.name, 
+         "category": p.category,
+         "barcode": p.barcode,
+         'photo': p.photo,
+         }
         for p in products
     ]
     session_db.close()
@@ -188,6 +215,7 @@ async def cmd_unsubscribe(message: Message):
 # ==================== КАРТОЧКА ТОВАРА ====================
 
 async def send_product_card(message: Message, p_data: dict):
+    """Отправляет карточку товара с фото (если есть) и inline-кнопкой подписки."""
     session_db = get_session()
     is_subscribed = (
         session_db.query(Subscriber)
@@ -198,30 +226,51 @@ async def send_product_card(message: Message, p_data: dict):
     session_db.close()
 
     if is_subscribed:
-        btn_sub = InlineKeyboardButton(
+        btn = InlineKeyboardButton(
             text="🔕 Отписаться",
             callback_data=f"unsub:{p_data['barcode']}",
         )
     else:
-        btn_sub = InlineKeyboardButton(
+        btn = InlineKeyboardButton(
             text="🔔 Подписаться",
             callback_data=f"sub:{p_data['barcode']}",
         )
 
-    btn_my = InlineKeyboardButton(
-        text="📋 Мои подписки",
-        callback_data="my_subs",
-    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[[btn]])
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[btn_sub], [btn_my]])
-
-    await message.answer(
+    caption = (
         f"📦 *{p_data['name']}*\n"
         f"Категория: {p_data['category']}\n"
-        f"Штрихкод: `{p_data['barcode']}`",
-        parse_mode="Markdown",
-        reply_markup=kb,
+        f"Штрихкод: `{p_data['barcode']}`"
     )
+
+    if p_data.get("photo"):
+        try:
+            await message.answer_photo(
+                photo=FSInputFile(p_data["photo"]),
+                caption=caption,
+                parse_mode="Markdown",
+                reply_markup=kb,
+            )
+        except Exception as e:
+            print(f"[PHOTO ERROR] Не удалось отправить фото {p_data['photo']}: {e}")
+            await message.answer(
+                caption,
+                parse_mode="Markdown",
+                reply_markup=kb,
+            )
+    else:
+        await message.answer(
+            caption,
+            parse_mode="Markdown",
+            reply_markup=kb,
+        )
+  
+@dp.message(F.photo)
+async def handle_photo(message: Message):
+    # Берём самое большое фото
+    photo = message.photo[-1]
+    await message.answer(f"file_id: `{photo.file_id}`", parse_mode="Markdown")
 
 
 # ==================== CALLBACK-КНОПКИ ====================

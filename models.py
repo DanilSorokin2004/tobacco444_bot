@@ -11,6 +11,7 @@ class Product(Base):
     barcode = Column(String(50), unique=True, nullable=False, index=True)
     name = Column(String(200), nullable=False)
     category = Column(String(100), nullable=False)
+    photo = Column(String(500), nullable=True)
 
     def __repr__(self):
         return f'<Product {self.barcode}: {self.name}>'
