@@ -24,7 +24,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 PROXY_URL = "socks5://127.0.0.1:10808"
 
 # --- Telegram Bot ---
-session = AiohttpSession(proxy=PROXY_URL)
+session = AiohttpSession(proxy=PROXY_URL,  timeout=120)
 bot = Bot(token=BOT_TOKEN, session=session)
 dp = Dispatcher()
 

@@ -2,9 +2,21 @@ from database import init_db, get_session
 from models import Product
 
 INITIAL_PRODUCTS = [
-    {'barcode': '4605648038536', 'name': 'Corsar coffee', 'category': 'Сигариллы'},
-    {'barcode': '4006396099433', 'name': 'Chapman vanilla', 'category': 'Сигареты', 'photo': 'img/Chapman Vanilla.jpg'},
-    {'barcode': '4687202523344', 'name': 'THE SCANDALIST', 'category': 'Жидкость для электронных сигарет'},
+    {'barcode': '4605648038536', 
+     'name': 'Corsar coffee', 
+     'category': 'Сигариллы', 
+     'photo': 'img/Corsar Coffee.png'},
+
+    {'barcode': '4006396099433', 
+     'name': 'Chapman vanilla',
+     'category': 'Сигареты', 
+     'photo': 'img/Chapman Vanilla.jpg'},
+
+    {'barcode': '4687202523344', 
+     'name': 'THE SCANDALIST', 
+     'category': 'Жидкость для электронных сигарет',
+     'photo': 'img/THE SCANDALIST.jpg'
+     },
 ]
 
 def seed():
