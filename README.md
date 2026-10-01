@@ -111,6 +111,11 @@ sudo .venv/bin/python test_evdev.py
 | `/subscribe <штрихкод>` | Подписаться на товар |
 | `/my_subs` | Мои подписки |
 | `/unsubscribe <штрихкод>` | Отписаться |
+| `/admin` | |Админ панель|
+| `/add_product` | Добавить товар |
+| `/delete_product` | Удалить товар |
+| `/stats` | Статистика |
+| `/broadcast` | Рассылка подписчикам |
 
 ### API
 
@@ -143,6 +148,10 @@ curl -X POST http://127.0.0.1:8000/notify \
 ## 📄 Лицензия
 
 MIT License — см. файл [LICENSE](LICENSE)
+
+## 🤖 Бот в Telegram
+
+[@Tabak_444_bot](https://t.me/Tabak_444_bot)
 
 ## 👤 Автор
 
