@@ -15,19 +15,36 @@ from aiogram.types import (
     FSInputFile,
 )
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from database import get_session
 from models import Product, Subscriber
 
+from sqlalchemy import func
+
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-PROXY_URL = "socks5://127.0.0.1:10808"
+PROXY_URL = "http://127.0.0.1:10808"
+ADMIN_ID = int(os.getenv('ADMIN_ID', 0))
 
 # --- Telegram Bot ---
 session = AiohttpSession(proxy=PROXY_URL,  timeout=120)
 bot = Bot(token=BOT_TOKEN, session=session)
 dp = Dispatcher()
 
+
+def is_admin(user_id: int) -> bool:
+    return user_id == ADMIN_ID
+
+class AddProduct(StatesGroup):
+    name = State()
+    category = State()
+    barcode = State()
+    photo = State()
+
+class Broadcast(StatesGroup):
+    message = State()
 
 # ==================== КОМАНДЫ ====================
 
@@ -46,6 +63,314 @@ async def cmd_start(message: Message):
         "📋 Мои подписки: /my_subs\n"
         "❓ Все команды: /help\n\n"
         "Если что-то непонятно — нажми /help 😊"
+    )
+
+@dp.message(Command('admin'))
+async def cmd_admin(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer('⛔ У тебя нет доступа к админ-панели')
+        return
+
+    await message.answer(
+        '🔧 Админ-панель «Табак 444»\n\n'
+        'Доступные команды:\n'
+        '/add_product — добавить товар\n'
+        '/stats — статистика\n'
+        '/broadcast — рассылка подписчикам\n'
+        '/delete_product — удалить товар'
+    )
+
+@dp.message(Command('stats'))
+async def cmd_stats(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer(f'⛔ У Вас нет доступа.')
+
+    session_db = get_session()
+
+    # Товары
+    total_products = session_db.query(Product.category).count()
+
+    # Категории
+    total_categories = session_db.query(Product.category).distinct().count()
+
+    # Subscribes
+    total_subs = session_db.query(Subscriber).count()
+
+    # Unique clients
+    total_clients = session_db.query(Subscriber.telegram_id).distinct().count()
+
+    # Топ 3 товаров по подпискам
+    top_products = (
+        session_db.query(
+            Subscriber.barcode,
+            func.count(Subscriber.id).label('subs_count')
+        )
+        .group_by(Subscriber.barcode)
+        .order_by(func.count(Subscriber.id).desc())
+        .limit(5)
+        .all()
+    )
+
+    # Статистика для топ 5
+    top_lines = []
+    for barcode, count in top_products:
+        p = session_db.query(Product).filter_by(barcode=barcode).first()
+        name = p.name if p else barcode
+        top_lines.append(f'  • {name} — {count}')
+
+    session_db.close()
+
+    text = (
+        f'📊 Статистика «Табак 444»\n\n'
+        f'📦 Товаров: {total_products}\n'
+        f'📂 Категорий: {total_categories}\n'
+        f'🔔 Подписок: {total_subs}\n'
+        f'👥 Уникальных клиентов: {total_clients}\n'
+    )
+
+    if top_lines:
+        text += '\n🏆 Топ-5 товаров по подпискам:\n' + '\n'.join(top_lines)
+
+    await message.answer(text)
+
+@dp.message(Command('broadcast'))
+async def cmd_broadcast(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await message.answer('⛔ У тебя нет доступа')
+        return
+
+    await state.set_state(Broadcast.message)
+    await message.answer(
+        '📢 Рассылка сообщения\n\n'
+        'Отправь текст, который нужно разослать всем клиентам.\n\n'
+        '⚠️ Сообщение получат все, у кого есть хотя бы одна подписка.\n\n'
+        'Для отмены: /cancel'
+    )
+
+@dp.message(Broadcast.message)
+async def broadcast_send(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+            await message.answer('⛔ У тебя нет доступа')
+            return
+
+    text = message.text.strip() if message.text else ''
+
+    if not text:
+        await message.answer('❌ Отправь текстовое сообщение')
+
+    await state.clear()
+
+    # Собираем уникальные telegram_id всех, у кого есть подписки
+    session_db = get_session()
+    clients = (
+        session_db.query(Subscriber.telegram_id)
+        .distinct()
+        .all()
+    )
+    session_db.close()
+
+    telegram_ids = [c[0] for c in clients]
+
+    if not telegram_ids:
+        await message.answer('В базе нет клиентов с подписками')
+        return
+
+    # Подтверждение
+    await message.answer(
+        f'📢 Начинаю рассылку...\n'
+        f'Получателей: {len(telegram_ids)}'
+    )
+
+    sent = 0
+    failed = 0
+
+    for tg_id in telegram_ids:
+        try:
+            await bot.send_message(
+                tg_id,
+                f'📢 Сообщение от «Табак 444»:\n\n{text}'
+            )
+            sent += 1
+        except Exception as e:
+            failed += 1
+            print(f'Ошибка отправки {tg_id}: {type(e).__name__}: {e}')
+
+    await message.answer(
+        f'✅ Рассылка завершена!\n\n'
+        f'📨 Отправлено: {sent}\n'
+        f'❌ Ошибок: {failed}'
+    )
+
+@dp.message(Command('add_product'))
+async def cmd_add_product(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        await message.answer('⛔ У тебя нет доступа')
+
+    await state.set_state(AddProduct.name)
+    await message.answer(
+        '📦 Добавление товара\n\n'
+        'Шаг 1/4: Введи название товара.\n'
+        'Например: Winston Blue\n\n'
+        'Для отмены: /cancel'
+    )
+
+@dp.message(Command('delete_product'))
+async def cmd_delete_product(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer('⛔ У тебя нет доступа')
+        return
+
+    session_db = get_session()
+    products = session_db.query(Product).all()
+
+    if not products:
+        session_db.close()
+        await message.answer('В базе нет товаров')
+
+    # Собираем данные до закрытия сессии
+    products_data = [
+        {'name': p.name, 'barcode': p.barcode, 'category': p.category}
+        for p in products
+    ]
+    session_db.close()
+
+    # Формируем inline-кнопки — по одной на товар
+    buttons = []
+    for p in products_data:
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"🗑 {p['name']} ({p['barcode']})",
+                callback_data=f"del:{p['barcode']}"
+            )
+        ])
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    await message.answer(
+        "🗑 Выбери товар для удаления:\n\n"
+        "⚠️ Внимание: удаление также удалит все подписки на этот товар.",
+        reply_markup=kb
+    )
+
+@dp.callback_query(F.data.startswith('del:'))
+async def cb_delete_product(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer('⛔ Нет доступа', show_alert=True)
+        return
+
+    barcode = callback.data.split(':', 1)[1]
+    session_db = get_session()
+
+    product = session_db.query(Product).filter_by(barcode=barcode).first()
+    if not product:
+        session_db.close()
+        await callback.answer('Товар не найден', show_alert=True)
+        return
+
+    product_name = product.name
+
+    # Delete subscribes
+    session_db.query(Subscriber).filter_by(barcode=barcode).delete()
+
+    # Delete goods
+    session_db.delete(product)
+    session_db.commit()
+    session_db.close()
+
+    # Changing a message
+    await callback.message.edit_text(
+        f'✅ Товар удалён:\n\n'
+        f'📦 {product_name}\n'
+        f'Штрихкод: {barcode}\n\n'
+        f'Все подписки на этот товар также удалены.'
+    )
+    await callback.answer('✅ Товар удалён')
+
+@dp.message(Command('cancel')) 
+async def cmd_cancel(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer('❌ Добавление товара отменено')
+
+@dp.message(AddProduct.name)
+async def add_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
+    await state.set_state(AddProduct.category)
+    await message.answer(
+        'Шаг 2/4: Введи категорию товара'
+        'Например: Сигареты\n\n'
+        'Для отмены: /cancel'
+    )
+
+@dp.message(AddProduct.photo, -F.photo)
+async def add_photo_wrong(message: Message):
+    await message.answer(
+        '❌ Нужно отправить фото товара.\n'
+        'Отправь картинку или /cancel'
+    )
+
+@dp.message(AddProduct.category)
+async def add_category(message: Message, state: FSMContext):
+    await state.update_data(category=message.text.strip())
+    await state.set_state(AddProduct.barcode)
+    await message.answer(
+        'Шаг 3/4: Введи штрихкод товара'
+        'Например: 4601234567890\n\n'
+        'Для отмены: /cancel'
+    )
+
+@dp.message(AddProduct.barcode)
+async def add_barcode(message: Message, state: FSMContext):
+    barcode = message.text.strip()
+
+    if not barcode.isdigit() or len(barcode) not in (8, 12, 13):
+        await message.answer(
+            '❌ Штрихкод должен содержать 8, 12 или 13 цифр.\n'
+            'Попробуй ещё раз или /cancel'
+        )
+        return
+
+    session_db = get_session()
+    exists = session_db.query(Product).filter_by(barcode=barcode).first()
+    session_db.close()
+
+    if exists:
+        await message.answer(
+             f'❌ Товар со штрихкодом {barcode} уже есть в базе.\n'
+            'Введи другой штрихкод или /cancel'
+        )
+        return
+
+    await state.update_data(barcode=barcode)
+    await state.set_state(AddProduct.photo)
+    await message.answer(
+        'Шаг 4/4: Отправь фото товара.\n\n'
+        'Для отмены: /cancel'
+    )
+
+@dp.message(AddProduct.photo, F.photo)
+async def add_photo(message: Message, state: FSMContext):
+    photo = message.photo[-1]
+    file_id = photo.file_id
+
+    data = await state.get_data()
+    await state.clear()
+
+    session_db = get_session()
+    product = Product(
+        barcode=data['barcode'],
+        name=data['name'],
+        category=data['category'],
+        photo=file_id,
+    )
+    session_db.add(product)
+    session_db.commit()
+    session_db.close()
+
+    await message.answer(
+        f"✅ Товар добавлен!\n\n"
+        f"📦 {data['name']}\n"
+        f"Категория: {data['category']}\n"
+        f"Штрихкод: {data['barcode']}"
     )
 
 @dp.message(Command("help"))
@@ -110,11 +435,7 @@ async def cmd_find(message: Message):
 
     # Собираем данные до закрытия сессии
     products_data = [
-        {"name": p.name, 
-         "category": p.category,
-         "barcode": p.barcode,
-         'photo': p.photo,
-         }
+        {'name': p.name, 'category': p.category, 'barcode': p.barcode, 'photo': p.photo}
         for p in products
     ]
     session_db.close()
@@ -244,34 +565,30 @@ async def send_product_card(message: Message, p_data: dict):
         f"Штрихкод: `{p_data['barcode']}`"
     )
 
-    if p_data.get("photo"):
-        try:
-            await message.answer_photo(
-                photo=FSInputFile(p_data["photo"]),
-                caption=caption,
-                parse_mode="Markdown",
-                reply_markup=kb,
-            )
-        except Exception as e:
-            print(f"[PHOTO ERROR] Не удалось отправить фото {p_data['photo']}: {e}")
-            await message.answer(
-                caption,
-                parse_mode="Markdown",
-                reply_markup=kb,
-            )
-    else:
-        await message.answer(
-            caption,
-            parse_mode="Markdown",
-            reply_markup=kb,
-        )
-  
-@dp.message(F.photo)
-async def handle_photo(message: Message):
-    # Берём самое большое фото
-    photo = message.photo[-1]
-    await message.answer(f"file_id: `{photo.file_id}`", parse_mode="Markdown")
+    if p_data.get('photo'):
+            photo_value = p_data['photo']
+            try:
+                if photo_value.startswith(('AgAC', 'BQAC', 'AQAD')):
+                    await message.answer_photo(
+                        photo=photo_value,
+                        caption=caption,
+                        parse_mode='Markdown',
+                        reply_markup=kb,
+                    )
+                else:
+                    await message.answer_photo(
+                        photo=FSInputFile(photo_value),
+                        caption=caption,
+                        parse_mode='Markdown',
+                        reply_markup=kb,
+                    )
+            except Exception as e:
+                print(f'[PHOTO ERROR] {e}')
+                await message.answer(caption, parse_mode='Markdown', reply_markup=kb)
 
+    else:
+        await message.answer(caption, parse_mode='Markdown', reply_markup=kb)
+  
 
 # ==================== CALLBACK-КНОПКИ ====================
 
@@ -418,16 +735,20 @@ async def cmd_category(message: Message):
     all_products = session_db.query(Product).all()
 
     products_data = [
-        {'name': p.name, 'category': p.category, 'barcode': p.barcode}
+        {'name': p.name, 'category': p.category, 'barcode': p.barcode, 'photo': p.photo}
         for p in all_products
         if p.category and category in p.category.lower()
     ]
     session_db.close()
 
     if not products_data:
-        await message.answer(f'📂 Категория «{args[1]}»: {len(products_data)} товаров')
+        await message.answer(f'❌ Категория «{args[1]}» не найдена')
+        return
+
+    await message.answer(f'📂 Категория «{args[1]}»: {len(products_data)} товаров')
     for p_data in products_data:
         await send_product_card(message, p_data)
+
 # ==================== РАССЫЛКА ====================
 
 async def notify_subscribers(barcode: str) -> int:
@@ -485,11 +806,11 @@ async def notify_subscribers(barcode: str) -> int:
 class NotifyRequest(BaseModel):
     barcode: str
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    polling_task = asyncio.ensure_future(dp.start_polling(bot))
-    print("✅ Бот запущен. API слушает на http://127.0.0.1:8000")
+    print("[DEBUG] Запускаю polling...")
+    polling_task = asyncio.create_task(dp.start_polling(bot))
+    print("[DEBUG] Polling запущен")
     yield
     polling_task.cancel()
     await bot.session.close()
