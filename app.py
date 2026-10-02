@@ -25,7 +25,7 @@ from sqlalchemy import func
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-PROXY_URL = "http://127.0.0.1:10808"
+PROXY_URL = "socks5://172.17.0.1:10808"
 ADMIN_ID = int(os.getenv('ADMIN_ID', 0))
 
 # --- Telegram Bot ---
