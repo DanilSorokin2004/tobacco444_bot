@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    container_name: tobacco_bot
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    # Пробрасываем USB-шину (для сканера, если понадобится)
+    devices:
+      - "/dev/bus/usb:/dev/bus/usb"
+    # Разрешаем доступ к USB-устройствам (major 189)
+    device_cgroup_rules:
+      - 'c 189:* rmw'
+    restart: unless-stopped
+    volumes:
+      - ./tobacco444.db:/app/tobacco444.db
+      - ./img:/app/img

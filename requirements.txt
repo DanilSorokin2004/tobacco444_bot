@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+httpx
+aiogram
+python-dotenv
+sqlalchemy
+aiohttp-socks
+evdev
